@@ -1,8 +1,9 @@
 import os
 import tempfile
-
+import librosa
+import numpy as np
+from scipy.io import wavfile
 import pandas as pd
-import laughter_classification.psf_features as psf_features
 
 
 class FeatureExtractor:
@@ -31,3 +32,23 @@ class PyAAExtractor(FeatureExtractor):
 
             feature_df = pd.read_csv(feature_save_path)
         return feature_df
+
+
+class LibrosaExtractor(FeatureExtractor):
+    def __init__(self, frame_sec=0.5):
+        self.frame_sec = frame_sec
+
+    def extract_features(self, wav_path):
+        rate, audio = wavfile.read(wav_path)
+        audio = audio.astype(np.float64)
+        N = audio.shape[0]
+        frame_length = int(rate * self.frame_sec)
+        print(frame_length)
+        frame_shift = frame_length // 4
+        features = []
+        for i in range(0, N - frame_length + 1, frame_shift):
+            features.append(np.concatenate((
+                np.mean(librosa.feature.mfcc(audio[i: i + frame_length], rate).T, axis=0),
+                np.mean(librosa.feature.melspectrogram(audio[i: i + frame_length], rate).T, axis=0)
+            )))
+        return pd.DataFrame(np.array(features))
