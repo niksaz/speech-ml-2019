@@ -49,6 +49,7 @@ class SSPNetDataSampler:
         incidents = incidents.values[0]
 
         rate, audio = wav.read(wav_path)
+        assert rate == self.sample_rate
 
         laughts = self._interval_generator(incidents)
         laughts = [interv_to_range(x, len(audio), self.duration) for x in laughts]

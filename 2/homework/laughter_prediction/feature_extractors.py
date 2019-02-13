@@ -41,14 +41,10 @@ class LibrosaExtractor(FeatureExtractor):
     def extract_features(self, wav_path):
         rate, audio = wavfile.read(wav_path)
         audio = audio.astype(np.float64)
-        N = audio.shape[0]
-        frame_length = int(rate * self.frame_sec)
-        print(frame_length)
-        frame_shift = frame_length // 4
+        frame_size = int(rate * self.frame_sec)
         features = []
-        for i in range(0, N - frame_length + 1, frame_shift):
+        for i in range(0, len(audio), frame_size):
             features.append(np.concatenate((
-                np.mean(librosa.feature.mfcc(audio[i: i + frame_length], rate).T, axis=0),
-                np.mean(librosa.feature.melspectrogram(audio[i: i + frame_length], rate).T, axis=0)
-            )))
+                np.mean(librosa.feature.mfcc(audio[i:i + frame_size], rate).T, axis=0),
+                np.mean(librosa.feature.melspectrogram(audio[i:i + frame_size], rate).T, axis=0))))
         return pd.DataFrame(np.array(features))
