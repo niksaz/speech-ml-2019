@@ -5,6 +5,7 @@ import librosa
 import random
 import numpy as np
 import argparse
+import soundfile
 
 BEEP_SOUND_AMPL_COEF = 0.25
 BACK_SOUND_AMPL_COEF = 0.25
@@ -44,10 +45,12 @@ def augment_speech(speech_path, output_path, beep_path, back_path, sr):
     output = (speech_data
               + BEEP_SOUND_AMPL_COEF * beep_data
               + BACK_SOUND_AMPL_COEF * back_data)
-    librosa.output.write_wav(str(output_path), output, sr=sr)
+    soundfile.write(str(output_path), output, samplerate=sr)
 
 
 def augment_speech_files(speech_dir, output_dir, beep_dir, back_dir):
+    print(speech_dir)
+    print(output_dir)
     output_dir.mkdir(exist_ok=True)
     for speech_path in speech_dir.iterdir():
         output_path = output_dir / f'{speech_path.stem}.wav'
