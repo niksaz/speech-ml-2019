@@ -22,11 +22,11 @@ class SSPNetDataSampler:
         labels = pd.read_csv(labels_path, names=def_cols, engine='python', skiprows=1)
         return labels
 
-    def __init__(self, corpus_root):
+    def __init__(self, corpus_root, data_dir):
         self.sample_rate = 16000
         self.duration = 11
         self.default_len = self.sample_rate * self.duration
-        self.data_dir = join(corpus_root, "data")
+        self.data_dir = join(corpus_root, data_dir)
         labels_path = join(corpus_root, "labels.txt")
         self.labels = self.read_labels(labels_path)
 
