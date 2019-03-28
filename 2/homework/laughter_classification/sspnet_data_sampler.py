@@ -6,8 +6,7 @@ import pandas as pd
 import scipy.io.wavfile as wav
 
 from laughter_classification.utils import chunks, in_any, interv_to_range, get_sname
-
-from laughter_prediction.sample_audio import sample_wav_by_time
+from laughter_prediction.feature_extractors import LibrosaExtractor
 
 
 class SSPNetDataSampler:
@@ -23,11 +22,11 @@ class SSPNetDataSampler:
         labels = pd.read_csv(labels_path, names=def_cols, engine='python', skiprows=1)
         return labels
 
-    def __init__(self, corpus_root):
+    def __init__(self, corpus_root, data_dir):
         self.sample_rate = 16000
         self.duration = 11
         self.default_len = self.sample_rate * self.duration
-        self.data_dir = join(corpus_root, "data")
+        self.data_dir = join(corpus_root, data_dir)
         labels_path = join(corpus_root, "labels.txt")
         self.labels = self.read_labels(labels_path)
 
@@ -50,6 +49,7 @@ class SSPNetDataSampler:
         incidents = incidents.values[0]
 
         rate, audio = wav.read(wav_path)
+        assert rate == self.sample_rate
 
         laughts = self._interval_generator(incidents)
         laughts = [interv_to_range(x, len(audio), self.duration) for x in laughts]
@@ -63,13 +63,7 @@ class SSPNetDataSampler:
         return df
 
     def df_from_file(self, wav_path, frame_sec):
-        """
-        Returns sampled data by path to audio file
-        :param wav_path: string, .wav file path
-        :param frame_sec: int, length of each frame in sec
-        :return: pandas.DataFrame with sampled audio
-        """
-        data = sample_wav_by_time(wav_path, frame_sec)
+        data = LibrosaExtractor(frame_sec).extract_features(wav_path)
         labels = self.get_labels_for_file(wav_path, frame_sec)
         df = pd.concat([data, labels], axis=1)
         return df
@@ -88,6 +82,11 @@ class SSPNetDataSampler:
         :param force_save: boolean, if you want to override file with same name
         :return:
         """
+        if os.path.isfile(save_path):
+            print('Sampled data already exists at', save_path)
+            print('Skipping generation.')
+            return pd.read_csv(save_path)
+
         fullpaths = self.get_valid_wav_paths()[:naudio]
         dataframes = [self.df_from_file(wav_path, frame_sec) for wav_path in fullpaths]
         df = pd.concat(dataframes)
