@@ -3,8 +3,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm_notebook as tqdm
+from sklearn.metrics import accuracy_score
 
 from classification.models import SpeakerIdentityLSTM, Autoencoder
 
@@ -16,57 +18,75 @@ def _fix_random_state(seed=7):
     torch.manual_seed(seed)
 
 
-def pack_feature_class_lists(features, classes, ids, device):
-    ids = sorted(ids, key=lambda ind: features[ind].size(0), reverse=True)
-    lengths = list(map(lambda ind: features[ind].size(0), ids))
-    seq = list(map(lambda ind: features[ind], ids))
-    inputs = pad_sequence(seq, batch_first=True).to(device)
-    targets = torch.tensor(list(map(lambda ind: classes[ind], ids)), dtype=torch.long)
+class SoundSegmentsDataset(Dataset):
+
+    def __init__(self, X_features, Y_classes):
+        self.X_features = X_features
+        self.Y_classes = Y_classes
+        assert len(X_features) == len(Y_classes)
+
+    def __len__(self):
+        return len(self.X_features)
+
+    def __getitem__(self, idx):
+        return self.X_features[idx], self.Y_classes[idx]
+
+
+def merge_sound_segments_batch(sample):
+    N = len(sample)
+    ids = sorted(range(N), key=lambda ind: sample[ind][0].size(0), reverse=True)
+    lengths = list(map(lambda ind: sample[ind][0].size(0), ids))
+    seq = list(map(lambda ind: sample[ind][0], ids))
+    inputs = pad_sequence(seq, batch_first=True)
+    targets = torch.tensor(list(map(lambda ind: sample[ind][1], ids)), dtype=torch.long)
     return inputs, lengths, targets
 
 
-def train_lstm(train_features, train_classes, test_features, test_classes, num_people, device):
+def train_lstm(train_dataset, test_dataset, num_people, device):
     EPOCHS = 5000
     BATCH_SIZE = 1024
     HIDDEN_DIM = 64
     _fix_random_state()
 
-    model = SpeakerIdentityLSTM(train_features[0].shape[1], HIDDEN_DIM, num_people, device)
+    model = SpeakerIdentityLSTM(train_dataset[0][0].shape[1], HIDDEN_DIM, num_people, device)
     criterion = nn.NLLLoss()
     optimizer = optim.SGD(model.parameters(), lr=1e-2)
 
-    N_train = len(train_features)
-    N_test = len(test_features)
-    train_ids = list(range(N_train))
-    test_ids = list(range(N_test))
+    train_dataloader = DataLoader(train_dataset,
+                                  batch_size=BATCH_SIZE,
+                                  shuffle=True,
+                                  collate_fn=merge_sound_segments_batch)
+    test_dataloader = DataLoader(test_dataset,
+                                 batch_size=BATCH_SIZE,
+                                 shuffle=False,
+                                 collate_fn=merge_sound_segments_batch)
 
     train_losses = []
     test_accuracies = []
 
     for _ in tqdm(range(EPOCHS)):
-        np.random.shuffle(train_ids)
-
         model.train()
         train_loss = 0
-        for i in range(0, N_train, BATCH_SIZE):
+        for sample_batched in train_dataloader:
             model.zero_grad()
-            train_inputs, train_lens, train_targets = pack_feature_class_lists(
-                train_features, train_classes, train_ids[i: i +BATCH_SIZE], device)
-            class_log_probs = model(train_inputs, train_lens).cpu()
+            train_inputs, train_lens, train_targets = sample_batched
+            class_log_probs = model(train_inputs.to(device), train_lens).cpu()
             loss = criterion(class_log_probs, train_targets)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             train_loss += loss.item()
         train_losses.append(train_loss)
 
         model.eval()
-        correct = 0
-        for i in range(0, N_test, BATCH_SIZE):
-            test_inputs, test_lens, test_targets = pack_feature_class_lists(
-                test_features, test_classes ,test_ids[i: i +BATCH_SIZE], device)
-            test_predictions = model.predict_classes(test_inputs, test_lens).cpu()
-            correct += (test_predictions == test_targets).sum().item()
-        accuracy = 100 * correct / N_test
+        predicted_classes = []
+        true_classes = []
+        for sample_batched in test_dataloader:
+            test_inputs, test_lens, test_targets = sample_batched
+            test_predictions = model.predict_classes(test_inputs.to(device), test_lens).cpu()
+            predicted_classes.extend(test_predictions)
+            true_classes.extend(test_targets)
+        accuracy = accuracy_score(true_classes, predicted_classes)
         test_accuracies.append(accuracy)
     return train_losses, test_accuracies
 
@@ -110,5 +130,4 @@ def train_autoencoder(noised_features, features, device):
             optimizer.step()
             train_loss += loss.item()
         train_losses.append(train_loss)
-    model.eval()
     return model, train_losses

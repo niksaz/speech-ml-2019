@@ -10,7 +10,7 @@ from kaldi.util.table import SequentialWaveReader, SequentialMatrixReader, Matri
 
 def compute_kaldi_features(desc_path, output_path, samp_freq=8000):
     print('Started processing', desc_path)
-    rspec, wspec = 'scp:{}'.format(desc_path), 'ark:{}'.format(output_path)
+    rspec, wspec = f'scp:{desc_path}', f'ark:{output_path}'
 
     mfcc_opts = MfccOptions()
     mfcc_opts.frame_opts.samp_freq = samp_freq
